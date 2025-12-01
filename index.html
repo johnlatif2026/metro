@@ -184,43 +184,28 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
 <script>AOS.init();</script>
 
-<script>
-// =================
-// Theme toggle
-// =================
-const bodyEl = document.getElementById("body");
-const switchBtn = document.getElementById("switchTheme");
-let dark = false;
-switchBtn.onclick = ()=>{
-  dark = !dark;
-  if(dark){
-    bodyEl.classList.add("dark");
-    switchBtn.innerText = "☀️";
-  } else {
-    bodyEl.classList.remove("dark");
-    switchBtn.innerText = "🌙";
-  }
-};
 
-// =================
-// Load data.json
-// =================
-let dataGlobal=null;
+<script>
+// =========================
+// تحميل بيانات المحطات
+// =========================
+let dataGlobal = null;
 fetch('data.json')
-.then(r=>r.json())
+.then(res=>res.json())
 .then(d=>{
   dataGlobal=d;
   populateSelectors();
 })
-.catch(()=>alert("data.json غير موجود"));
+.catch(()=>alert("ملف data.json غير موجود"));
 
-// =================
-// Elements
-// =================
+// =========================
+// عناصر DOM
+// =========================
 const fromLine=document.getElementById("fromLine");
 const toLine=document.getElementById("toLine");
 const fromStation=document.getElementById("fromStation");
 const toStation=document.getElementById("toStation");
+
 const cFromLine=document.getElementById("cFromLine");
 const cToLine=document.getElementById("cToLine");
 const cFromStation=document.getElementById("cFromStation");
@@ -228,31 +213,37 @@ const cToStation=document.getElementById("cToStation");
 
 const btnDetails=document.getElementById("btnDetails");
 const detailsResult=document.getElementById("detailsResult");
+
 const btnCalc=document.getElementById("btnCalc");
 const calcResult=document.getElementById("calcResult");
+const people=document.getElementById("people");
 
-// =================
-// constants
-// =================
-const MIN_PER_ST = 2.3;
+// =========================
+// إعدادات وقت و سعر
+// =========================
+const MIN_PER_ST = 2.5;
 const MIN_PER_TR = 3;
 
+// الأسعار حسب عدد المحطات
 function fare(n){
-  if(n<=9)return 8;
-  if(n<=16)return 10;
-  if(n<=23)return 15;
-  return 20;
+  if(n<=9)return 6;
+  if(n<=16)return 8;
+  if(n<=26)return 12;
+  return 15;
 }
 
-// Fill line dropdowns
+// =========================
+// ملء القوائم
+// =========================
 function populateSelectors(){
-  dataGlobal.lines.forEach(l=>{
-    let opt=`<option value="${l.id}">${l.name}</option>`;
+  dataGlobal.lines.forEach(line=>{
+    let opt=`<option value="${line.id}">${line.name}</option>`;
     fromLine.insertAdjacentHTML("beforeend",opt);
     toLine.insertAdjacentHTML("beforeend",opt);
     cFromLine.insertAdjacentHTML("beforeend",opt);
     cToLine.insertAdjacentHTML("beforeend",opt);
   });
+
   fillStations(fromLine.value,fromStation);
   fillStations(toLine.value,toStation);
   fillStations(cFromLine.value,cFromStation);
@@ -260,8 +251,8 @@ function populateSelectors(){
 }
 
 function fillStations(lineId,select){
-  select.innerHTML='';
-  let line=dataGlobal.lines.find(l=>l.id==lineId);
+  select.innerHTML="";
+  let line = dataGlobal.lines.find(l=>l.id==lineId);
   line.stations.forEach(s=>{
     let o=document.createElement("option");
     o.value=s; o.textContent=s;
@@ -269,6 +260,7 @@ function fillStations(lineId,select){
   });
 }
 
+// تحديث المحطات عند تغيير الخط
 [fromLine,toLine,cFromLine,cToLine].forEach(el=>{
   el.onchange=()=>{
     if(el===fromLine)fillStations(el.value,fromStation);
@@ -278,62 +270,98 @@ function fillStations(lineId,select){
   }
 });
 
-// ======= route finding (نفس كودك بلا حذف) =======
-function findBestRoute(a,b,c,d){
-  const lines=dataGlobal.lines;
-  const L1=lines.find(x=>x.id===a);
-  const L2=lines.find(x=>x.id===c);
-  let s1=L1.stations.indexOf(b);
-  let s2=L2.stations.indexOf(d);
-  if(s1==-1||s2==-1)return null;
-  if(a===c){
-    return {stationsCount:Math.abs(s1-s2),transfers:[],pathSegments:[
-      {lineId:a,fromIndex:s1,toIndex:s2,stationsCount:Math.abs(s1-s2)}
+// =========================
+// 🔥 أقوى حل لمشكلة حساب المحطات
+// =========================
+//
+// — لو نفس الخط → الفرق الحقيقي بين index المحطتين
+// — لو خطوط مختلفة → نبحث عن أفضل محطة تبديل مشتركة
+//
+// =========================
+function findRoute(startLineId,startStation,endLineId,endStation){
+
+  const lines = dataGlobal.lines;
+  let L1 = lines.find(l=>l.id===startLineId);
+  let L2 = lines.find(l=>l.id===endLineId);
+
+  let i1 = L1.stations.indexOf(startStation);
+  let i2 = L2.stations.indexOf(endStation);
+
+  if(i1===-1 || i2===-1) return null;
+
+  // نفس الخط
+  if(startLineId===endLineId){
+    let count = Math.abs(i1-i2);
+    return {count, transfers:[], path:[
+      {line:startLineId, from:i1, to:i2}
     ]};
   }
-  let common=L1.stations.filter(s=>L2.stations.includes(s));
-  if(common.length>0){
-    let best=null;
-    common.forEach(inter=>{
-      let i1=L1.stations.indexOf(inter);
-      let i2=L2.stations.indexOf(inter);
-      let T=Math.abs(s1-i1)+Math.abs(s2-i2);
-      if(!best||T<best.T)best={inter,i1,i2,T};
-    });
-    return{stationsCount:best.T,transfers:[best.inter],pathSegments:[
-      {lineId:a,fromIndex:s1,toIndex:best.i1,stationsCount:Math.abs(s1-best.i1)},
-      {lineId:c,fromIndex:best.i2,toIndex:s2,stationsCount:Math.abs(s2-best.i2)}
-    ]};
-  }
-  return null;
+
+  // خطوط مختلفة → نبحث عن محطات مشتركة
+  let common = L1.stations.filter(s => L2.stations.includes(s));
+
+  if(common.length===0) return null;
+
+  let best = null;
+  common.forEach(inter=>{
+    let x1 = L1.stations.indexOf(inter);
+    let x2 = L2.stations.indexOf(inter);
+    let total = Math.abs(i1-x1)+Math.abs(i2-x2);
+    if(!best || total<best.total){
+      best = { inter, x1, x2, total };
+    }
+  });
+
+  return{
+    count: best.total,
+    transfers: [best.inter],
+    path:[
+      {line:startLineId, from:i1, to:best.x1},
+      {line:endLineId, from:best.x2, to:i2}
+    ]
+  };
 }
 
-// تفاصيل مشوارك
+// =========================
+// 🔍 تفاصيل مشوارك
+// =========================
 btnDetails.onclick=()=>{
-  const r=findBestRoute(fromLine.value,fromStation.value,toLine.value,toStation.value);
-  if(!r){detailsResult.innerHTML="❌";return;}
-  let t=(r.stationsCount*MIN_PER_ST)+(r.transfers.length*MIN_PER_TR);
-  let c=fare(r.stationsCount);
+  const route = findRoute(fromLine.value,fromStation.value,toLine.value,toStation.value);
+  if(!route){
+    detailsResult.innerHTML="❌ لا يمكن الوصول";
+    return;
+  }
+
+  let minutes = route.count * MIN_PER_ST + route.transfers.length * MIN_PER_TR;
+  let price = fare(route.count);
+
   detailsResult.innerHTML=`
-    <p><b>عدد المحطات:</b> ${r.stationsCount}</p>
-    <p><b>التبديلات:</b> ${r.transfers.length?r.transfers.join(" ➜ "):"لا يوجد"}</p>
-    <p><b>الوقت:</b> ${t.toFixed(1)} دقيقة</p>
-    <p><b>السعر:</b> ${c} جنيه</p>
+    <p>عدد المحطات: <b>${route.count}</b></p>
+    <p>التبديل: <b>${route.transfers.length?route.transfers.join(" → "):"لا يوجد"}</b></p>
+    <p>الوقت: <b>${minutes.toFixed(1)} دقيقة</b></p>
+    <p>سعر التذكرة: <b>${price} جنيه</b></p>
   `;
 };
 
-// حساب التكلفة
+// =========================
+// 🧮 احسب التكلفة
+// =========================
 btnCalc.onclick=()=>{
-  const r=findBestRoute(cFromLine.value,cFromStation.value,cToLine.value,cToStation.value);
-  if(!r){calcResult.innerHTML="❌";return;}
-  let p=parseInt(people.value)||1;
-  let t=(r.stationsCount*MIN_PER_ST)+(r.transfers.length*MIN_PER_TR);
-  let c=fare(r.stationsCount);
+  const route = findRoute(cFromLine.value,cFromStation.value,cToLine.value,cToStation.value);
+  if(!route){
+    calcResult.innerHTML="❌ لا يمكن الوصول";
+    return;
+  }
+
+  let p = parseInt(people.value)||1;
+  let minutes = route.count * MIN_PER_ST + route.transfers.length * MIN_PER_TR;
+  let price = fare(route.count);
+
   calcResult.innerHTML=`
-    <p><b>عدد المحطات:</b> ${r.stationsCount}</p>
-    <p><b>الوقت:</b> ${t.toFixed(1)} دقيقة</p>
-    <p><b>التذكرة:</b> ${c} جنيه</p>
-    <p><b>المجموع ل ${p}:</b> ${c*p} جنيه</p>
+    <p>عدد المحطات: <b>${route.count}</b></p>
+    <p>الوقت: <b>${minutes.toFixed(1)} دقيقة</b></p>
+    <p>السعر لشخص: <b>${price} جنيه</b></p>
+    <p>المجموع ل ${p}: <b>${price*p} جنيه</b></p>
   `;
 };
 </script>
