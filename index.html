@@ -234,14 +234,14 @@ const calcResult=document.getElementById("calcResult");
 // =================
 // constants
 // =================
-const MIN_PER_ST = 2.5;
-const MIN_PER_TR = 4;
+const MIN_PER_ST = 2;
+const MIN_PER_TR = 3;
 
 function fare(n){
-  if(n<=9)return 6;
-  if(n<=16)return 8;
-  if(n<=23)return 12;
-  return 15;
+  if(n<=9)return 8;
+  if(n<=16)return 10;
+  if(n<=23)return 15;
+  return 20;
 }
 
 // Fill line dropdowns
